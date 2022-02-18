@@ -111,7 +111,8 @@ impl ConnectionManager {
                             data,
                             timestamp,
                         } => {
-                            println!("they sent us {} bytes of audio data on {}/{}", data.len(), app_name, stream_key)
+                            print!("\r");
+                            // println!("they sent us {} bytes of audio data on {}/{}", data.len(), app_name, stream_key)
                         }
                         ServerSessionEvent::VideoDataReceived {
                             app_name,
@@ -119,7 +120,8 @@ impl ConnectionManager {
                             data,
                             timestamp,
                         } => {
-                            println!("they sent us {} bytes of video data on {}/{}", data.len(), app_name, stream_key)
+                            print!("\r");
+                            // println!("they sent us {} bytes of video data on {}/{}", data.len(), app_name, stream_key)
                         },
                         ServerSessionEvent::ClientChunkSizeChanged { new_chunk_size } => todo!(),
                         ServerSessionEvent::ReleaseStreamRequested {
@@ -142,12 +144,13 @@ impl ConnectionManager {
                         } => {
                             println!("they changed the stream metadata");
                         }
-                        ServerSessionEvent::UnhandleableAmf0Command {
+                        c @ ServerSessionEvent::UnhandleableAmf0Command {
                             command_name,
                             transaction_id,
                             command_object,
                             additional_values,
                         } => {
+                            println!("got an unhandleable amf0 command: {:?}", c);
                         }
                         ServerSessionEvent::PlayStreamRequested {
                             request_id,
