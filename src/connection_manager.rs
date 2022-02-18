@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use ffmpeg_next::frame;
 use rml_rtmp::{
     handshake::{Handshake, HandshakeProcessResult, PeerType},
     sessions::{ServerSession, ServerSessionConfig, ServerSessionEvent, ServerSessionResult},
@@ -9,10 +10,14 @@ use tokio::{
     net::TcpStream,
 };
 
+use crate::decoding_frames::debug_save_to_png;
+
 pub struct ConnectionManager {
     socket: TcpStream,
     session: ServerSession,
     server_session_results: VecDeque<ServerSessionResult>,
+    frame_decoder: crate::decoding_frames::FrameExtractor,
+    last_frame: Option<frame::Video>
 }
 
 impl ConnectionManager {
@@ -68,6 +73,8 @@ impl ConnectionManager {
                 deque.extend(packets_to_send2);
                 deque
             },
+            frame_decoder: crate::decoding_frames::FrameExtractor::new(),
+            last_frame: None
         })
     }
 
@@ -121,6 +128,7 @@ impl ConnectionManager {
                             timestamp,
                         } => {
                             print!("\r");
+                            self.last_frame = self.frame_decoder.decode_bytes(timestamp.value, data);
                             // println!("they sent us {} bytes of video data on {}/{}", data.len(), app_name, stream_key)
                         },
                         ServerSessionEvent::ClientChunkSizeChanged { new_chunk_size } => todo!(),
@@ -142,7 +150,7 @@ impl ConnectionManager {
                             stream_key,
                             metadata,
                         } => {
-                            println!("they changed the stream metadata");
+                            println!("they changed the stream metadata: {:?}", metadata);
                         }
                         c @ ServerSessionEvent::UnhandleableAmf0Command {
                             command_name,
@@ -194,6 +202,9 @@ impl ConnectionManager {
             self.socket.readable().await?;
             let read_bytes = sock_read(&mut self.socket)?;
             self.server_session_results.extend(self.session.handle_input(&read_bytes)?);
+            if let Some(f) = &self.last_frame {
+                debug_save_to_png(f, "test.png").await?;
+            }
         }
     }
 }

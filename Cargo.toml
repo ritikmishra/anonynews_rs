@@ -11,3 +11,4 @@ futures = { version = "0.3" }
 bytes = "1"
 anyhow = "1.0"
 rml_rtmp = "0.6.1"
+ffmpeg-next = "5.0.2"
