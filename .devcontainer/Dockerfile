@@ -14,4 +14,42 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         libavdevice-dev \
         libavcodec-dev \
         libclang-dev \
-        clang 
+        clang \ 
+        wget \
+        build-essential \
+        cmake
+
+RUN wget https://github.com/opencv/opencv/archive/refs/tags/4.2.0.zip
+RUN unzip 4.2.0.zip -d opencv
+RUN cd opencv/opencv-4.2.0 && \
+    mkdir -p build/ && \
+    cd build && \
+    cmake \
+        -D CMAKE_BUILD_TYPE=RELEASE \
+        -D CMAKE_INSTALL_PREFIX=/usr/local \
+        -D BUILD_DOCS=OFF \
+        -D BUILD_EXAMPLES=OFF \
+        -D BUILD_opencv_apps=OFF \
+        -D BUILD_opencv_python2=OFF \
+        -D BUILD_opencv_python3=OFF \
+        -D BUILD_PERF_TESTS=OFF \
+#        We want to statically link opencv into our program
+        -D BUILD_SHARED_LIBS=OFF \ 
+        -D OPENCV_GENERATE_PKGCONFIG=ON \
+        -D BUILD_TESTS=OFF \
+        -D ENABLE_PRECOMPILED_HEADERS=OFF\
+        -D FORCE_VTK=OFF \
+        -D WITH_FFMPEG=ON \
+        -D WITH_GDAL=OFF \ 
+        -D WITH_IPP=OFF \
+        -D WITH_OPENEXR=OFF \
+        -D WITH_OPENGL=OFF \ 
+        -D WITH_QT=OFF\
+        -D WITH_TBB=OFF \ 
+        -D WITH_XINE=OFF \ 
+        -D BUILD_JPEG=ON  \
+        -D BUILD_TIFF=ON \
+        -D BUILD_PNG=ON \
+    ../ && \
+    make && \
+    make install
