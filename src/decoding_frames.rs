@@ -9,6 +9,7 @@ use ffmpeg_next::{
 };
 
 use tokio::{fs, io::AsyncWriteExt};
+use crate::flv_file::FLVWriterWrapper;
 
 pub async fn debug_save_to_png(frame: &frame::Video, filename: &str) -> std::io::Result<()> {
     let mut file = fs::File::open(filename).await?;
@@ -33,73 +34,22 @@ pub async fn debug_save_to_png(frame: &frame::Video, filename: &str) -> std::io:
 }
 
 pub struct FrameExtractor {
-    video_decoder: decoder::Video,
-    file: std::fs::File
+    flv_file: FLVWriterWrapper<std::fs::File>
+    // accumulated_bytes: Vec<u8>,
+    // video_decoder: decoder::Video,
+    // file: std::fs::File
 }
 
 impl FrameExtractor {
     pub fn new() -> Self {
-        let mut x = Context::new()
-            .decoder()
-            .open_as(Id::FLV1)
-            .unwrap()
-            .video()
-            .unwrap();
-        let vv = &[
-            b'F', b'L', b'V', 0x01,
-            0x05, 0x00, 0x00, 0x00,
-            0x09, 0x00, 0x00, 0x00,
-            0x00,
-        ];
-        // x.send_packet(&Packet::borrow(vv))
-        // .unwrap();
-        let mut file = std::fs::File::create("hi.flv").unwrap();
-        file.write_all(vv).unwrap();
-        
-        Self { video_decoder: x, file }
+        let file = std::fs::File::create("hi2.flv").unwrap();
+        let mut flv_file = FLVWriterWrapper::new(file);
+        flv_file.write_header().unwrap();
+        Self { flv_file }
     }
 
     pub fn decode_bytes(&mut self, timestamp: u32, bytes: &Bytes) -> Option<frame::Video> {
-        let prev_tag_size = (11 + bytes.len()) as u32;
-        let frontmatter = {
-            let mut ret: Vec<u8> = Vec::with_capacity(16);
-
-            let payload_size: [u8; 4] = (bytes.len() as u32).to_be_bytes();
-            let timestamp_bytes: [u8; 4] = timestamp.to_be_bytes();
-
-            ret.push(9);
-            ret.extend_from_slice(&payload_size[1..]);
-            ret.extend_from_slice(&timestamp_bytes[1..]);
-            ret.extend_from_slice(&timestamp_bytes[..1]);
-            ret.extend_from_slice(&[0, 0, 0]); // stream id
-            ret
-        };
-        self.file.write_all(frontmatter.as_slice()).unwrap();
-        self.file.write_all(bytes.as_ref()).unwrap();
-        self.file.write_all(&prev_tag_size.to_be_bytes()).unwrap();
-
-        self.video_decoder
-            .send_packet(&Packet::borrow(frontmatter.as_slice()))
-            .ok()?;
-        match self
-            .video_decoder
-            .send_packet(&Packet::borrow(bytes.as_ref()))
-        {
-            Ok(()) => {}
-            e @ Err(_) => {
-                println!("wot?? {:?}", e);
-                return None;
-            }
-        };
-
-        // let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::ARGB, 1920, 1080);
-        let mut frame = frame::Video::empty();
-        match self.video_decoder.receive_frame(&mut *frame) {
-            Ok(()) => Some(frame),
-            e @ Err(_) => {
-                println!("what? {:?}", e);
-                None
-            }
-        }
+        self.flv_file.write_video_bytes(timestamp, bytes).unwrap();
+        None
     }
 }
