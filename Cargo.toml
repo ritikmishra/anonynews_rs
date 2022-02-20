@@ -14,4 +14,7 @@ rml_rtmp = "0.6.1"
 ffmpeg-next = "5.0.2"
 libc = "0.2"
 arrayvec = "0.7.2"
-opencv = { version = "0.63.0" , features = ["clang-runtime"] } 
+cxx = "1.0"
+
+[build-dependencies]
+cxx-build = "1.0"
