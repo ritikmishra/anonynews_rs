@@ -10,4 +10,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         fish \
         ffmpeg \
         libavutil-dev \
-
+        libavformat-dev \
+        libavdevice-dev \
+        libavcodec-dev \
+        libclang-dev \
+        clang 
