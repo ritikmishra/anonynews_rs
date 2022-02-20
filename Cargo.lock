@@ -7,9 +7,11 @@ name = "anonynews_rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrayvec",
  "bytes",
  "ffmpeg-next",
  "futures",
+ "libc",
  "rml_rtmp",
  "tokio",
 ]
@@ -19,6 +21,12 @@ name = "anyhow"
 version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94a45b455c14666b85fc40a019e8ab9eb75e3a124e05494f5397122bc9eb06e0"
+
+[[package]]
+name = "arrayvec"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
 
 [[package]]
 name = "bindgen"
