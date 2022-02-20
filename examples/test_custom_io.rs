@@ -279,7 +279,6 @@ fn main() {
         }
 
         let mut frame_index = 0;
-        let mut frame_index2 = 0;
         let mut process_decoded_frames =
             |decoder: &mut decoder::Video| -> Result<(), ffmpeg::Error> {
                 let mut decoded = frame::Video::empty();
