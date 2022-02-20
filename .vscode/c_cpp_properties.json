@@ -3,15 +3,16 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/../",
-                "/usr/local/include/**",
-                "${workspaceFolder}/target/cxxbridge/**"
+                "${workspaceFolder}/target/cxxbridge/rust",
+                "${workspaceFolder}/target/cxxbridge/**",
+                "/usr/local/include/opencv4/**",
+                "${workspaceFolder}/../"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c11",
             "cppStandard": "c++14",
-            "intelliSenseMode": "linux-clang-x64"
+            "intelliSenseMode": "linux-gcc-x64"
         }
     ],
     "version": 4

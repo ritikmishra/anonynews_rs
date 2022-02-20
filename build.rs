@@ -47,6 +47,8 @@ fn main() {
         .file("src/cv_face_blurring.cc")
         .include("/usr/local/include/opencv4/opencv")
         .include("/usr/local/include/opencv4")
+        .flag("-Wall")
+        .flag("-Wpedantic")
         .flag_if_supported("-std=c++14")
         .compile("anonynews_rs");
     
