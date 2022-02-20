@@ -59,19 +59,19 @@ impl<W: Write> FLVWriterWrapper<W> {
 
 //-----
 
-use std::sync::mpsc::{Sender, SendError};
 use arrayvec::ArrayVec;
+use std::sync::mpsc::{SendError, Sender};
 
-struct BufferedSenderWriter<const BUF_SIZE: usize> {
+pub struct BufferedSenderWriter<const BUF_SIZE: usize> {
     sender: Sender<ArrayVec<u8, BUF_SIZE>>,
-    buffer: ArrayVec<u8, BUF_SIZE>
+    buffer: ArrayVec<u8, BUF_SIZE>,
 }
 
 impl<const BUF_SIZE: usize> BufferedSenderWriter<BUF_SIZE> {
     pub fn new(sender: Sender<ArrayVec<u8, BUF_SIZE>>) -> Self {
         Self {
             sender,
-            buffer: ArrayVec::new()
+            buffer: ArrayVec::new(),
         }
     }
 }
@@ -79,7 +79,11 @@ impl<const BUF_SIZE: usize> BufferedSenderWriter<BUF_SIZE> {
 impl<const BUF_SIZE: usize> Write for BufferedSenderWriter<BUF_SIZE> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let remaining_buffer_space = self.buffer.remaining_capacity();
-        let could_add = &buf[..remaining_buffer_space]; // length could be less
+        let could_add = if buf.len() > remaining_buffer_space {
+            &buf[..remaining_buffer_space]
+        } else {
+            buf
+        };
 
         // safe bc we check that we don't write over beforehand
         self.buffer.try_extend_from_slice(could_add).unwrap();
