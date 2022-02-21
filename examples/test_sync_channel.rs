@@ -1,4 +1,4 @@
-use std::{sync::mpsc::{sync_channel, channel}, thread};
+use std::{sync::mpsc::channel, thread};
 
 fn main() {
     let (tx, rx) = channel::<i32>();

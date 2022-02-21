@@ -1,16 +1,15 @@
 use std::{
-    io::{ErrorKind, Read, Seek, SeekFrom, Write},
+    io::{Read, Write},
     mem::MaybeUninit,
     sync::{
         mpsc::{sync_channel, RecvError, TryRecvError},
-        Arc,
     },
     thread,
 };
 
 use ffmpeg::{
     codec, decoder,
-    format::{self, input},
+    format,
     frame,
     software::scaling,
 };
@@ -18,7 +17,7 @@ use ffmpeg_next as ffmpeg;
 use ffmpeg_next::sys as ffmpeg_c;
 
 use arrayvec::ArrayVec;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::Receiver;
 
 /*
 
@@ -96,7 +95,7 @@ impl CustomFFMPEGIO for MPSCReader {
         Ok(bytes_written as u32)
     }
 
-    fn write(&mut self, buf: &[u8]) -> Result<u32, ffmpeg::Error> {
+    fn write(&mut self, _buf: &[u8]) -> Result<u32, ffmpeg::Error> {
         todo!()
     }
 }
@@ -135,7 +134,7 @@ impl CustomFFMPEGIO for FileReader {
         }
     }
 
-    fn write(&mut self, buf: &[u8]) -> Result<u32, ffmpeg::Error> {
+    fn write(&mut self, _buf: &[u8]) -> Result<u32, ffmpeg::Error> {
         todo!()
     }
 }
@@ -195,7 +194,7 @@ fn read_from_custom_input<T: CustomFFMPEGIO>(
         ) {
             0 => {
                 match ffmpeg_c::avformat_find_stream_info(avformat_context, std::ptr::null_mut()) {
-                    r @ 0.. => {
+                    0.. => {
                         Box::leak(custom_ffmpegio_reader);
                         Ok(ffmpeg::format::context::Input::wrap(avformat_context))
                     }
@@ -269,12 +268,6 @@ fn main() {
             let mut file = std::fs::File::create(format!("temp/frame{}.ppm", index))?;
             file.write_all(format!("P6\n{} {}\n255\n", frame.width(), frame.height()).as_bytes())?;
             file.write_all(frame.data(0))?;
-            Ok(())
-        }
-
-        fn save_packet(packet: &ffmpeg::Packet, index: usize) -> std::io::Result<()> {
-            let mut file = std::fs::File::create(format!("temp_bytes/frame{}.bytes", index))?;
-            file.write_all(packet.data().unwrap())?;
             Ok(())
         }
 
