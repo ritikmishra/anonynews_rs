@@ -1,6 +1,7 @@
-use cxx::let_cxx_string;
+use std::{sync::mpsc::{Receiver, channel}, thread};
 
-use self::ffi::blurFFMpegFrame;
+use cxx::let_cxx_string;
+use ffmpeg_next::{frame, format::pixel};
 
 // these paths are relative to the current file
 const CAFFE_PROTOTXT: &[u8] = include_bytes!("../models/deploy.prototxt");
@@ -26,7 +27,7 @@ mod ffi {
 
         fn loadFaceEmbedderNet(pathname: &CxxString) -> ();
 
-        fn blurFFMpegFrame(pngBuffer: &[u8], filename: &CxxString) -> UniquePtr<CxxVector<u8>>;
+        fn blurFFMpegFrame(pngBuffer: &[u8]) -> UniquePtr<CxxVector<u8>>;
     }
 }
 
@@ -36,19 +37,51 @@ mod ffi {
 pub fn init_models() {
     ffi::loadFaceDetectorNet(CAFFE_PROTOTXT, CAFFE_MODEL);
 
-    // this path is relative to cargo.toml FIXME: it should not be absolute
-    let_cxx_string!(pathname = "/workspaces/anonynews_rs/models/openface_nn4.small2.v1.t7");
+    // this path is relative to cargo.toml
+    let_cxx_string!(pathname = "./models/openface_nn4.small2.v1.t7");
     ffi::loadFaceEmbedderNet(&pathname);
 }
 
-pub fn save_png_buffer_to_file(pngbuffer: Vec<u8>, filename: &str) {
-    let_cxx_string!(filename = filename);
-    blurFFMpegFrame(pngbuffer.as_slice(), &filename);
-    // let mat = cvMatrixFromPNGBuffer(pngbuffer.as_slice());
-    // findFaces(mat);
-    // saveCvImageToFile(mat, &filename);
+pub fn frame_to_ppm_format(frame: frame::Video) -> Vec<u8> {
+    let mut buf: Vec<u8> = Vec::new();
+
+    buf.extend_from_slice(
+        format!("P6\n{} {}\n255\n", frame.width(), frame.height()).as_bytes(),
+    );
+    buf.extend_from_slice(frame.data(0));
+    
+    buf
+}
+
+pub fn blur_a_frame(frame: frame::Video) -> frame::Video {
+    // remember how big the frame was
+    let width = frame.width();
+    let height = frame.height();
+    
+    let ppm_bytes = frame_to_ppm_format(frame);
+    let blurred = ffi::blurFFMpegFrame(&ppm_bytes); 
+    
+    let mut ret = frame::Video::new(pixel::Pixel::RGB24, width, height);
+    // TODO: would be cooler if we didn't copy, i.e we got opencv to write into this directly
+    ret.data_mut(0).copy_from_slice(blurred.as_slice());
+    ret
 }
 
 pub fn print_hello_from_cxx() {
     ffi::printHelloFromCxx();
+}
+
+pub fn start_blur_thread(frame_receiver: Receiver<frame::Video>) -> Receiver<frame::Video> {
+    let (blurred_tx, blurred_rx) = channel();
+
+    thread::spawn(move || loop {
+        // if they stop sending us frames, unwrap will trigger
+        let to_blur = frame_receiver.recv().unwrap();
+        let blurred_buffer = blur_a_frame(to_blur);
+
+        // if they stop listening to our frames, unwrap will trigger
+        blurred_tx.send(blurred_buffer).unwrap();
+    });
+
+    blurred_rx
 }

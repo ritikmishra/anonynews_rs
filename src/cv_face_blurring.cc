@@ -78,7 +78,6 @@ namespace anonynews_rs
 
                 if (valid)
                 {
-                    std::cout << "box under consideration: x1, y1, x2, y2, conf = " << x1 << ", " << y1 << ", " << x2 << ", " << y2 << ", " << confidence << std::endl;
                     regions.push_back(cv::Rect2i(
                         cv::Point2i(x1, y1),
                         cv::Point2i(x2, y2)));
@@ -122,10 +121,7 @@ namespace anonynews_rs
             {
                 continue;
             }
-            std::cout << "y|o\tx, y, w, h = " << region.x << ", " << region.y << ", " << region.width << ", " << region.height << std::endl;
-            std::cout << "imw, imh = " << resizedImage.cols << ", " << resizedImage.rows << std::endl;
             cv::Mat face = resizedImage(region);
-            std::cout << "should not print" << std::endl;
             cv::Mat faceBlob = cv::dnn::blobFromImage(face, 1.0 / 255.0, cv::Size2i(96, 96), cv::Scalar(0, 0, 0), true, false);
             faceEmbedderNet.setInput(faceBlob);
 
@@ -163,8 +159,7 @@ namespace anonynews_rs
 
         for (auto &rec : regionsToBlur)
         {
-            // TODO: margin
-            std::cout << "yo\tx, y, w, h = " << rec.x << ", " << rec.y << ", " << rec.width << ", " << rec.height << std::endl;
+            // FIXME: blur the margin as well
             cv::blur(imageToBlur(rec), imageToBlur(rec), GAUSSIAN_KERNEL);
         }
 
@@ -173,38 +168,22 @@ namespace anonynews_rs
 
     cv::Mat blur(cv::Mat toBlur)
     {
-        auto faces = findFaces(toBlur);
-        std::cout << "potential face count: " << faces.size() << std::endl;
-        std::cout << "face regions:" << std::endl;
-
-        cv::Mat boxed = toBlur.clone();
-        for (auto &rec : faces)
-        {
-            std::cout << "\tx, y, w, h = " << rec.x << ", " << rec.y << ", " << rec.width << ", " << rec.height << std::endl;
-
-
-            cv::rectangle(boxed, rec, cv::Scalar(0, 255, 0), 3);
-        }
-
-        cv::imwrite("temp/boxed.png", boxed);
-
-        std::cout << "getting embeddings" << std::endl;
         auto embeddings = getEmbeddings(toBlur);
-        std::cout << "finding regions to blur" << std::endl;
+        // TODO: load whitelist somehow
         auto regionsToBlur = findRegionsToBlur(std::move(embeddings), std::vector<cv::Mat>());
-        std::cout << "blurring regions" << std::endl;
         return blurRegions(toBlur, std::move(regionsToBlur));
     }
 
-    std::unique_ptr<std::vector<uint8_t>> blurFFMpegFrame(rust::Slice<const uint8_t> pngBuffer, const std::string &filename)
+    std::unique_ptr<std::vector<uint8_t>> blurFFMpegFrame(rust::Slice<const uint8_t> pngBuffer)
     {
         auto cvMat = cvMatrixFromPNGBuffer(pngBuffer);
         auto blurredMat = blur(std::move(cvMat));
 
-        cv::imwrite(filename, blurredMat);
+        std::unique_ptr<std::vector<uint8_t>> ret = std::make_unique<std::vector<uint8_t>>();
 
-        std::unique_ptr<std::vector<uint8_t>> ret;
-        blurredMat.copyTo(*ret);
+        cv::Mat flat = blurredMat.reshape(1, blurredMat.total() * blurredMat.channels());
+        *ret = blurredMat.isContinuous() ? flat : flat.clone();
+
         return ret;
     }
 }

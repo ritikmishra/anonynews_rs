@@ -7,7 +7,8 @@
 #include <opencv2/dnn/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
-#include <rust/cxx.h>
+#include <anonynews_rs/target/cxxbridge/rust/cxx.h>
+// #include <rust/cxx.h>
 
 namespace anonynews_rs
 {
@@ -23,7 +24,7 @@ namespace anonynews_rs
         const std::string& pathname
     );
 
-    std::unique_ptr<std::vector<uint8_t>> blurFFMpegFrame(rust::Slice<const uint8_t> pngBuffer, const std::string& filename);
+    std::unique_ptr<std::vector<uint8_t>> blurFFMpegFrame(rust::Slice<const uint8_t> pngBuffer);
 }
 
 #endif
