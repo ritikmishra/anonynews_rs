@@ -1,3 +1,9 @@
+//! Once the RTMP server gets bytes, we need to pass those bytes to ffmpeg so that
+//! they can be decoded into frames. This module provides an adapter to turn
+//! a std::sync::mpsc::Receiver into an ffmpeg input
+//! Once you have the ffmpeg input, you can subsequently extract frames from it
+//! and blur them or whatever you want
+
 use std::{
     mem::MaybeUninit,
     sync::mpsc::{Receiver, RecvError, TryRecvError},
@@ -9,6 +15,7 @@ use ffmpeg_next as ffmpeg;
 
 // --- trait defns
 
+/// A trait for something that `ffmpeg` can read bytes from
 pub trait CustomFFMpegRead {
     /// Read from self, writing the bytes read into the buffer
     fn read(&mut self, buf: &mut [MaybeUninit<u8>]) -> Result<u32, ffmpeg::Error>;
@@ -19,6 +26,7 @@ pub trait CustomFFMpegRead {
     }
 }
 
+/// A trait for something that `ffmpeg` can write into
 pub trait CustomFFMpegWrite {
     /// Write into self, reading from the bytes in the buffer
     fn write(&mut self, buf: &[u8]) -> Result<u32, ffmpeg::Error>;
@@ -26,6 +34,8 @@ pub trait CustomFFMpegWrite {
 
 // --- concrete impl defns
 
+/// A wrapper around a `Receiver<ArrayVec<u8, CHUNK_SIZE>>` 
+/// that `ffmpeg` can read bytes from in order to decode audio
 pub struct MPSCReader<const CHUNK_SIZE: usize> {
     recv: Receiver<ArrayVec<u8, CHUNK_SIZE>>,
 }
