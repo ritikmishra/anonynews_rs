@@ -53,3 +53,10 @@ RUN cd opencv/opencv-4.2.0 && \
     ../ && \
     make && \
     make install
+
+RUN wget https://github.com/rui314/mold/releases/download/v1.2.1/mold-1.2.1-x86_64-linux.tar.gz && \
+    tar xf mold-1.2.1-x86_64-linux.tar.gz && \
+    cp -r mold-1.2.1-x86_64-linux/* /usr/local && \
+    rm /usr/bin/ld && \
+    ln -s /usr/local/bin/mold /usr/bin/ld
+
