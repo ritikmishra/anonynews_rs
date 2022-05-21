@@ -22,10 +22,6 @@ async fn main() -> anyhow::Result<()> {
         info!("accepting connection from {:?}", _addr);
         tokio::spawn(manage_connection(tcp_stream));
     }
-
-    info!("exiting application");
-
-    Ok(())
 }
 
 #[tracing::instrument]
