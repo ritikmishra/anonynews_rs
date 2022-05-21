@@ -1,8 +1,9 @@
 use std::{
     env::temp_dir,
     io::Write,
+    os::unix::prelude::OsStrExt,
     sync::mpsc::{channel, Receiver},
-    thread, os::unix::prelude::OsStrExt,
+    thread,
 };
 
 use cxx::let_cxx_string;
@@ -88,14 +89,17 @@ pub fn print_hello_from_cxx() {
 pub fn start_blur_thread(frame_receiver: Receiver<frame::Video>) -> Receiver<frame::Video> {
     let (blurred_tx, blurred_rx) = channel();
 
-    thread::spawn(move || loop {
-        // if they stop sending us frames, unwrap will trigger
-        let to_blur = frame_receiver.recv().unwrap();
-        let blurred_buffer = blur_a_frame(to_blur);
+    thread::Builder::new()
+        .name("frame blur thread".to_owned())
+        .spawn(move || loop {
+            // if they stop sending us frames, unwrap will trigger
+            let to_blur = frame_receiver.recv().expect("frame splitter thread died");
+            let blurred_buffer = blur_a_frame(to_blur);
 
-        // if they stop listening to our frames, unwrap will trigger
-        blurred_tx.send(blurred_buffer).unwrap();
-    });
+            // if they stop listening to our frames, unwrap will trigger
+            blurred_tx.send(blurred_buffer).expect("whoever was supposed to consume blurred frames died");
+        })
+        .expect("failed to spawn thread");
 
     blurred_rx
 }

@@ -87,7 +87,7 @@ impl FrameExtractor {
 
                 for (stream, packet) in ictx.packets() {
                     if stream.index() == video_stream_index {
-                        decoder.send_packet(&packet).unwrap();
+                        decoder.send_packet(&packet).expect("ffmpeg could not decode one of the packets from the stream");
                         process_decoded_frames(&mut decoder).unwrap();
                     }
                 }
