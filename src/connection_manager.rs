@@ -86,7 +86,12 @@ impl ConnectionManager {
                 let _span = span!(Level::TRACE, "writing_frames_to_fs").entered();
                 let mut frame_counter = 0;
 
-                std::fs::create_dir("./temp/").unwrap();
+                match std::fs::create_dir("./temp") {
+                    Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
+                        Err(e).unwrap()
+                    }
+                    _ => ()
+                };
 
                 loop {
                     let next_frame = frame_blurrer_output.recv().unwrap();
