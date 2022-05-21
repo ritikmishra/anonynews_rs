@@ -38,8 +38,15 @@ pub fn init_models() {
     ffi::loadFaceDetectorNet(CAFFE_PROTOTXT, CAFFE_MODEL);
 
     // this path is relative to cargo.toml
-    let_cxx_string!(pathname = "./models/openface_nn4.small2.v1.t7");
-    ffi::loadFaceEmbedderNet(&pathname);
+    let mut filename = temp_dir();
+    filename.push("openface_model");
+
+    std::fs::File::create(filename.as_path())
+        .and_then(|mut f| {
+            f.write_all(TORCH_MODEL)?;
+            // FIXME -- using .as_bytes() is platform specific
+            let_cxx_string!(pathname = filename.as_os_str().as_bytes());
+            ffi::loadFaceEmbedderNet(&pathname);
 }
 
 pub fn frame_to_ppm_format(frame: frame::Video) -> Vec<u8> {
