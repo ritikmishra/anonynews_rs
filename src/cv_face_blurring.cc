@@ -177,6 +177,7 @@ namespace anonynews_rs
     {
         auto cvMat = cvMatrixFromPNGBuffer(pngBuffer);
         auto blurredMat = blur(std::move(cvMat));
+        cv::cvtColor(blurredMat, blurredMat, cv::COLOR_BGR2RGB);
 
         std::unique_ptr<std::vector<uint8_t>> ret = std::make_unique<std::vector<uint8_t>>();
 
