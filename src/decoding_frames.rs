@@ -17,6 +17,7 @@ use crate::{
     flv_file::{BufferedSenderWriter, FLVWriterWrapper},
 };
 
+#[derive(Debug)]
 pub struct FrameExtractor {
     /// Put stream bytes into here. They will get passed to ffmpeg.
     rtmp_stream_input: FLVWriterWrapper<BufferedSenderWriter<1024>>,

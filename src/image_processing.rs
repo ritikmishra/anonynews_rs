@@ -1,11 +1,17 @@
-use std::{sync::mpsc::{Receiver, channel}, thread};
+use std::{
+    env::temp_dir,
+    io::Write,
+    sync::mpsc::{channel, Receiver},
+    thread, os::unix::prelude::OsStrExt,
+};
 
 use cxx::let_cxx_string;
-use ffmpeg_next::{frame, format::pixel};
+use ffmpeg_next::{format::pixel, frame};
 
 // these paths are relative to the current file
 const CAFFE_PROTOTXT: &[u8] = include_bytes!("../models/deploy.prototxt");
-const CAFFE_MODEL: &[u8] = include_bytes!("../models/res10_300x300_ssd_iter_140000_fp16.caffemodel");
+const CAFFE_MODEL: &[u8] =
+    include_bytes!("../models/res10_300x300_ssd_iter_140000_fp16.caffemodel");
 const TORCH_MODEL: &[u8] = include_bytes!("../models/openface_nn4.small2.v1.t7");
 
 #[cxx::bridge(namespace=anonynews_rs)]
@@ -47,16 +53,17 @@ pub fn init_models() {
             // FIXME -- using .as_bytes() is platform specific
             let_cxx_string!(pathname = filename.as_os_str().as_bytes());
             ffi::loadFaceEmbedderNet(&pathname);
+            Ok(())
+        })
+        .expect("could not load openface model into opencv");
 }
 
 pub fn frame_to_ppm_format(frame: frame::Video) -> Vec<u8> {
     let mut buf: Vec<u8> = Vec::new();
 
-    buf.extend_from_slice(
-        format!("P6\n{} {}\n255\n", frame.width(), frame.height()).as_bytes(),
-    );
+    buf.extend_from_slice(format!("P6\n{} {}\n255\n", frame.width(), frame.height()).as_bytes());
     buf.extend_from_slice(frame.data(0));
-    
+
     buf
 }
 
@@ -64,10 +71,10 @@ pub fn blur_a_frame(frame: frame::Video) -> frame::Video {
     // remember how big the frame was
     let width = frame.width();
     let height = frame.height();
-    
+
     let ppm_bytes = frame_to_ppm_format(frame);
-    let blurred = ffi::blurFFMpegFrame(&ppm_bytes); 
-    
+    let blurred = ffi::blurFFMpegFrame(&ppm_bytes);
+
     let mut ret = frame::Video::new(pixel::Pixel::RGB24, width, height);
     // TODO: would be cooler if we didn't copy, i.e we got opencv to write into this directly
     ret.data_mut(0).copy_from_slice(blurred.as_slice());

@@ -24,8 +24,7 @@ namespace anonynews_rs
             bufModel.size());
     }
 
-    void loadFaceEmbedderNet(
-        const std::string &pathname)
+    void loadFaceEmbedderNet(const std::string &pathname)
     {
         // std::string torchBytes(reinterpret_cast<const char *>(bufModel.data()), bufModel.size());
         faceEmbedderNet = cv::dnn::readNetFromTorch(pathname);

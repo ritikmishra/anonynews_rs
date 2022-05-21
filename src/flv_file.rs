@@ -3,6 +3,7 @@ use std::io::Write;
 
 use bytes::Bytes;
 
+#[derive(Debug)]
 pub struct FLVWriterWrapper<W> {
     inner: W,
 }
@@ -62,6 +63,7 @@ impl<W: Write> FLVWriterWrapper<W> {
 use arrayvec::ArrayVec;
 use std::sync::mpsc::{SendError, Sender};
 
+#[derive(Debug)]
 pub struct BufferedSenderWriter<const BUF_SIZE: usize> {
     sender: Sender<ArrayVec<u8, BUF_SIZE>>,
     buffer: ArrayVec<u8, BUF_SIZE>,
