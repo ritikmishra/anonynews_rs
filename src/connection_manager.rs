@@ -1,12 +1,22 @@
 use rml_rtmp::{
     handshake::{Handshake, HandshakeProcessResult, PeerType},
-    sessions::{ServerSession, ServerSessionConfig, ServerSessionEvent, ServerSessionResult},
+    sessions::{
+        ServerSession, ServerSessionConfig, ServerSessionError, ServerSessionEvent,
+        ServerSessionResult,
+    },
 };
 use std::{collections::VecDeque, thread};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 use tracing::{debug, info, span, Level};
 
 use crate::image_processing;
+
+enum SessionResultAction {
+    SendBytes(Vec<u8>),
+    HandleMoreSessionResults(Vec<ServerSessionResult>),
+    NoAction,
+    CloseConnection,
+}
 
 pub struct ConnectionManager {
     socket: TcpStream,
@@ -82,26 +92,27 @@ impl ConnectionManager {
                 crate::decoding_frames::FrameExtractor::new();
             let frame_blurrer_output = image_processing::start_blur_thread(frame_splitter_output);
 
-            thread::spawn(move || {
-                let _span = span!(Level::TRACE, "writing_frames_to_fs").entered();
-                let mut frame_counter = 0;
+            thread::Builder::new()
+                .name("write blurred frames to filesystem".to_owned())
+                .spawn(move || {
+                    let _span = span!(Level::TRACE, "writing_frames_to_fs").entered();
+                    let mut frame_counter = 0;
 
-                match std::fs::create_dir("./temp") {
-                    Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
-                        Err(e).unwrap()
+                    match std::fs::create_dir("./temp") {
+                        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => Err(e).unwrap(),
+                        _ => (),
+                    };
+
+                    loop {
+                        let next_frame = frame_blurrer_output.recv().expect("frame blurring thread died");
+                        let ppm = image_processing::frame_to_ppm_format(next_frame);
+
+                        std::fs::write(format!("./temp/blurred_frame_{}.ppm", frame_counter), &ppm)
+                            .unwrap();
+                        frame_counter += 1;
                     }
-                    _ => ()
-                };
-
-                loop {
-                    let next_frame = frame_blurrer_output.recv().unwrap();
-                    let ppm = image_processing::frame_to_ppm_format(next_frame);
-
-                    std::fs::write(format!("./temp/blurred_frame_{}.ppm", frame_counter), &ppm)
-                        .unwrap();
-                    frame_counter += 1;
-                }
-            });
+                })
+                .expect("failed to spawn thread");
 
             Ok(Self {
                 socket,
@@ -116,126 +127,174 @@ impl ConnectionManager {
         }
     }
 
-    #[allow(unused)]
-    #[tracing::instrument(level="info")]
-    pub fn convert_serversessionresult_to_bytes(&mut self) -> anyhow::Result<Vec<u8>> {
-        let mut ret: Vec<u8> = Vec::new();
-        while let Some(result) = self.server_session_results.pop_front() {
-            match result {
-                ServerSessionResult::OutboundResponse(packet) => {
-                    ret.extend(packet.bytes);
-                }
-                ServerSessionResult::RaisedEvent(e) => match &e {
-                    ServerSessionEvent::ConnectionRequested {
-                        request_id,
-                        app_name,
-                    } => {
-                        debug!("\tsomeone wants to connect to app {}", app_name,);
+    fn process_server_session_event(
+        &mut self,
+        e: ServerSessionEvent,
+    ) -> Result<SessionResultAction, ServerSessionError> {
+        Ok(match e {
+            ServerSessionEvent::ConnectionRequested {
+                request_id,
+                app_name,
+            } => {
+                debug!("\tsomeone wants to connect to app {}", app_name,);
+                SessionResultAction::HandleMoreSessionResults(
+                    self.session.accept_request(request_id)?,
+                )
+            }
+            ServerSessionEvent::PublishStreamRequested {
+                request_id,
+                app_name,
+                stream_key,
+                mode,
+            } => {
+                debug!(
+                    "\tsomeone wants to publish ({:?}) on {}/{}",
+                    mode, app_name, stream_key
+                );
+                SessionResultAction::HandleMoreSessionResults(
+                    self.session.accept_request(request_id)?,
+                )
+            }
+            ServerSessionEvent::AudioDataReceived {
+                app_name,
+                stream_key,
+                data,
+                timestamp,
+            } => SessionResultAction::NoAction,
+            ServerSessionEvent::VideoDataReceived {
+                app_name,
+                stream_key,
+                data,
+                timestamp,
+            } => {
+                self.frame_decoder.send_bytes(timestamp.value, &data);
+                SessionResultAction::NoAction
+            }
+            ServerSessionEvent::ClientChunkSizeChanged { new_chunk_size } => todo!(),
+            ServerSessionEvent::ReleaseStreamRequested {
+                request_id,
+                app_name,
+                stream_key,
+            } => {
+                debug!("\t'Release stream requested'?");
+                SessionResultAction::NoAction
+            }
+            ServerSessionEvent::PublishStreamFinished {
+                app_name,
+                stream_key,
+            } => {
+                debug!("\tthey finished publishing a stream");
+                SessionResultAction::CloseConnection
+            }
+            ServerSessionEvent::StreamMetadataChanged {
+                app_name,
+                stream_key,
+                metadata,
+            } => {
+                debug!("\tthey changed the stream metadata: {:?}", metadata);
+                SessionResultAction::NoAction
+            }
+            c @ ServerSessionEvent::UnhandleableAmf0Command { .. } => {
+                debug!("\tgot an unhandleable amf0 command: {:?}", c);
+                SessionResultAction::NoAction
+            }
+            ServerSessionEvent::PlayStreamRequested {
+                request_id,
+                app_name,
+                stream_key,
+                start_at,
+                duration,
+                reset,
+                stream_id,
+            } => {
+                debug!("\tthey are requesting to play a stream");
+                SessionResultAction::NoAction
+            }
+            ServerSessionEvent::PlayStreamFinished {
+                app_name,
+                stream_key,
+            } => {
+                debug!("\tthey finished playing a stream");
+                SessionResultAction::CloseConnection
+            }
+            ServerSessionEvent::AcknowledgementReceived { bytes_received } => {
+                debug!("\tthey acknowledged they received some bytes");
+                SessionResultAction::NoAction
+            }
+            ServerSessionEvent::PingResponseReceived { timestamp } => {
+                debug!("\treceived a ping response");
+                SessionResultAction::NoAction
+            }
+        })
+    }
 
-                        let results = self.session.accept_request(*request_id)?;
-                        self.server_session_results.extend(results);
-                        ret.extend(self.convert_serversessionresult_to_bytes()?);
-                    }
-                    ServerSessionEvent::PublishStreamRequested {
-                        request_id,
-                        app_name,
-                        stream_key,
-                        mode,
-                    } => {
-                        debug!(
-                            "\tsomeone wants to publish ({:?}) on {}/{}",
-                            mode, app_name, stream_key
-                        );
-                        let results = self.session.accept_request(*request_id)?;
-                        self.server_session_results.extend(results);
-                        ret.extend(self.convert_serversessionresult_to_bytes()?);
-                    }
-                    ServerSessionEvent::AudioDataReceived {
-                        app_name,
-                        stream_key,
-                        data,
-                        timestamp,
-                    } => {}
-                    ServerSessionEvent::VideoDataReceived {
-                        app_name,
-                        stream_key,
-                        data,
-                        timestamp,
-                    } => {
-                        self.frame_decoder.send_bytes(timestamp.value, data);
-                    }
-                    ServerSessionEvent::ClientChunkSizeChanged { new_chunk_size } => todo!(),
-                    ServerSessionEvent::ReleaseStreamRequested {
-                        request_id,
-                        app_name,
-                        stream_key,
-                    } => {
-                        debug!("\t'Release stream requested'?");
-                    }
-                    ServerSessionEvent::PublishStreamFinished {
-                        app_name,
-                        stream_key,
-                    } => {
-                        debug!("\tthey finished publishing a stream");
-                    }
-                    ServerSessionEvent::StreamMetadataChanged {
-                        app_name,
-                        stream_key,
-                        metadata,
-                    } => {
-                        debug!("\tthey changed the stream metadata: {:?}", metadata);
-                    }
-                    c @ ServerSessionEvent::UnhandleableAmf0Command {
-                        command_name,
-                        transaction_id,
-                        command_object,
-                        additional_values,
-                    } => {
-                        debug!("\tgot an unhandleable amf0 command: {:?}", c);
-                    }
-                    ServerSessionEvent::PlayStreamRequested {
-                        request_id,
-                        app_name,
-                        stream_key,
-                        start_at,
-                        duration,
-                        reset,
-                        stream_id,
-                    } => {
-                        debug!("\tthey are requesting to play a stream");
-                    }
-                    ServerSessionEvent::PlayStreamFinished {
-                        app_name,
-                        stream_key,
-                    } => {
-                        debug!("\tthey finished playing a stream");
-                    }
-                    ServerSessionEvent::AcknowledgementReceived { bytes_received } => {
-                        debug!("\tthey acknowledged they received some bytes")
-                    }
-                    ServerSessionEvent::PingResponseReceived { timestamp } => {
-                        debug!("\treceived a ping response")
-                    }
-                },
-                ServerSessionResult::UnhandleableMessageReceived(_) => {
-                    debug!("\tyuck! we got an unhandleable message!")
-                }
+    fn process_server_session_result(
+        &mut self,
+        ssr: ServerSessionResult,
+    ) -> Result<SessionResultAction, ServerSessionError> {
+        match ssr {
+            ServerSessionResult::RaisedEvent(e) => self.process_server_session_event(e),
+            ServerSessionResult::OutboundResponse(packet) => {
+                Ok(SessionResultAction::SendBytes(packet.bytes))
+            }
+            ServerSessionResult::UnhandleableMessageReceived(_) => {
+                debug!("yuck! we got an unhandleable message :(");
+                Ok(SessionResultAction::NoAction)
             }
         }
+    }
 
-        // self.socket.flush().await?;
-        Ok(ret)
+    #[allow(unused)]
+    #[tracing::instrument(level = "info")]
+    pub fn process_message_buffer(&mut self) -> anyhow::Result<(Vec<u8>, bool)> {
+        let mut connection_should_close = false;
+        let mut bytes_to_send: Vec<u8> = Vec::new();
+        let mut more_session_results: Vec<ServerSessionResult> = Vec::new();
+
+        // Keep processing server events until there are none left
+        // Most server events require us to send some bytes to the client,
+        // but some kinds decompose into more events, so we may as well handle those too
+        while !self.server_session_results.is_empty() {
+            let x = std::mem::take(&mut self.server_session_results);
+            x.into_iter()
+                .map(|ssr| self.process_server_session_result(ssr))
+                .try_for_each(|el| -> Result<(), ServerSessionError> {
+                    match el? {
+                        SessionResultAction::SendBytes(b) => {
+                            bytes_to_send.extend(b);
+                        }
+                        SessionResultAction::HandleMoreSessionResults(srs) => {
+                            more_session_results.extend(srs);
+                        }
+                        SessionResultAction::CloseConnection => {
+                            connection_should_close = true;
+                        }
+                        SessionResultAction::NoAction => (),
+                    };
+                    Ok(())
+                })?;
+
+            self.server_session_results
+                .extend(std::mem::take(&mut more_session_results));
+        }
+
+        Ok((bytes_to_send, connection_should_close))
     }
 
     #[tracing::instrument]
     pub async fn handle_connection(&mut self) -> anyhow::Result<()> {
         loop {
-            let buf = self.convert_serversessionresult_to_bytes()?;
-            self.socket.write_all(&buf).await?;
+            let (bytes_to_send, should_close_connection) = self.process_message_buffer()?;
+            self.socket.write_all(&bytes_to_send).await?;
             self.socket.readable().await?;
             let read_bytes = sock_read(&mut self.socket)?;
             self.server_session_results
                 .extend(self.session.handle_input(&read_bytes)?);
+
+            if should_close_connection {
+                info!("closing connection");
+                return Ok(());
+            }
         }
     }
 }
